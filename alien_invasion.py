@@ -4,6 +4,7 @@ from settings import Settings
 from ship import Ship
 from bullet import Bullet
 from alien import Alien
+from game_Stats import GameStats  # Dodaj import klasy GameStats
 
 class AlienInvasion:
     """Ogólna klasa przeznaczona do zarządzania zasobami i sposobem działania"""
@@ -18,6 +19,8 @@ class AlienInvasion:
             (self.settings.screen_width, self.settings.screen_height))
         py.display.set_caption("Inwazja Obcych")
 
+        self.stats = GameStats(self)  # Inicjalizacja statystyk gry
+
         self.ship = Ship(self)
 
         self.bullets = py.sprite.Group()
@@ -29,9 +32,10 @@ class AlienInvasion:
         """Rozpoczęcie Głównej Pętli"""
         while True:
             self._check_events()
-            self.ship.update()
-            self._update_bullets()
-            self._update_aliens()
+            if self.stats.game_active:
+                self.ship.update()
+                self._update_bullets()
+                self._update_aliens()
             self._update_screen()
             self.clock.tick(60)
 
@@ -103,16 +107,25 @@ class AlienInvasion:
             if bullet.rect.bottom <= 0:
                 self.bullets.remove(bullet)
 
-            collisions = py.sprite.groupcollide(self.bullets, self.aliens, True, True)
+        # Sprawdź kolizje między pociskami a kosmitami.
+        collisions = py.sprite.groupcollide(self.bullets, self.aliens, True, True)
 
+        if not self.aliens:
+            # Usuń istniejące pociski i utwórz nową flotę.
+            self.bullets.empty()
+            self._create_fleet()
 
     def _update_aliens(self):
         """Uaktualnij pozycje wszystkich obcych w flocie."""
         self._check_fleet_edges()
         self.aliens.update()
 
+        # Sprawdź kolizje między kosmitami a statkiem.
         if py.sprite.spritecollideany(self.ship, self.aliens):
-            print("statek został trafiony")
+            self._ship_hit()
+
+        # Sprawdź, czy któryś z kosmitów dotarł do dolnej krawędzi ekranu.
+        self._check_aliens_bottom()
 
     def _check_fleet_edges(self):
         """Reaguj odpowiednio, gdy obcy dotrze do krawędzi ekranu."""
@@ -126,6 +139,34 @@ class AlienInvasion:
         for alien in self.aliens.sprites():
             alien.rect.y += self.settings.fleet_drop_speed
         self.settings.fleet_direction *= -1
+
+    def _ship_hit(self):
+        """Reaguj na kolizję statku z kosmitą."""
+        if self.stats.ships_left > 0:
+            # Zmniejsz ships_left.
+            self.stats.ships_left -= 1
+
+            # Usuń wszystkich kosmitów i pociski.
+            self.aliens.empty()
+            self.bullets.empty()
+
+            # Utwórz nową flotę i wyśrodkuj statek.
+            self._create_fleet()
+            self.ship.center_ship()
+
+            # Pauza.
+            py.time.sleep(0.5)
+        else:
+            self.stats.game_active = False
+
+    def _check_aliens_bottom(self):
+        """Sprawdź, czy którykolwiek kosmita dotarł do dolnej krawędzi ekranu."""
+        screen_rect = self.screen.get_rect()
+        for alien in self.aliens.sprites():
+            if alien.rect.bottom >= screen_rect.bottom:
+                # Traktuj to tak, jakby statek został trafiony.
+                self._ship_hit()
+                break
 
     def _update_screen(self):
         """Uaktualnij obrazy na ekranie i przełącz na nowy ekran."""
